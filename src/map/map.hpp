@@ -298,6 +298,8 @@ enum npc_subtype : uint8{
 	NPCTYPE_POINTSHOP, /// Pointshop
 	NPCTYPE_TOMB, /// Monster tomb
 	NPCTYPE_MARKETSHOP, /// Marketshop
+	NPCTYPE_BARTER, /// Bartershop
+	NPCTYPE_EXPANDED_BARTER, /// Expanded Bartershop
 };
 
 enum e_race : int8{

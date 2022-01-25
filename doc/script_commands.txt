@@ -10798,3 +10798,66 @@ See 'achievementinfo' for valid <type> values.
 - Excludes ACHIEVEINFO_LEVEL and ACHIEVEINFO_SCORE.
 
 ---------------------------------------
+
+// Bartershop
+<Map>	bartershop	#name	<Sprite ID>
+
+---------------------------------------
+
+Add item to Bartershop
+npcshopadditem "<Shop Name>",<Item>,<Cost Item>,<Cost Amount>,<Quantity>;
+
+** Quantity is amount of sold item in store. If you want infinite amount please set to -1
+
+-	bartershop	#barter_test	-1
+
+malangdo,208,163,5	script	Test Shop	554,{
+	end;
+
+OnInit:
+	npcshopadditem "#barter_test",601,512,20,-1;
+	end;
+}
+
+	****************************************
+	It will sell Flywing(601) for Infinite piece in shop
+	that require
+	- Apple(512) x 20
+	****************************************
+
+---------------------------------------
+
+// Expanded - Bartershop
+<Map>	exbartershop	#name	<Sprite ID>
+
+---------------------------------------
+
+Add item to Expanded-Bartershop
+
+npcshopadditem "<Shop Name>",<Item>,<Quantity>,<Zeny Cost>,<Cost Item 1>,<Cost Amount 1>,<Cost Refine 1>,........<Cost Item 5>,<Cost Amount 5>,<Cost Refine 5>;
+
+** Quantity is amount of sold item in store. If you want infinite amount please set to -1
+
+example:
+
+
+-	exbartershop	#ex_barter_test	-1
+
+malangdo,208,163,5	script	Test Shop	554,{
+	end;
+
+OnInit:
+	npcshopadditem "#ex_barter_test",601,99,10000,1203,1,11,512,9,0,513,5,0,0,0,0,0,0,0;
+	end;
+}
+
+	****************************************
+	It will sell Flywing(601) for 99ea in shop
+	that require
+	- 10000zeny
+	- +11 Knife(1203) x1
+	- Apple(512) x9
+	- Banana(513) x5
+	****************************************
+
+---------------------------------------
