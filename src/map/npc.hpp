@@ -28,9 +28,23 @@ struct npc_item_list {
 	t_itemid nameid;
 	unsigned int value;
 #if PACKETVER >= 20131223
-	unsigned short qty; ///< Stock counter (Market shop)
+	short qty; ///< Stock counter (Market shop)
 	uint8 flag; ///< 1: Item added by npcshopitem/npcshopadditem, force load! (Market shop)
 #endif
+	int value2;  // barter currency item amount
+	struct npc_barter_currency {
+		unsigned int nameid[5];
+		unsigned int refine[5];
+		unsigned int amount[5];
+	} currency;
+	short qflag;
+};
+
+struct barteritemlist {
+	int addId;
+	int addAmount;
+	int removeIndex;
+	int shopIndex;
 };
 
 #if !defined(sun) && (!defined(__NETBSD__) || __NetBSD_Version__ >= 600000000) // NetBSD 5 and Solaris don't like pragma pack but accept the packed attribute
@@ -1445,6 +1459,10 @@ bool npc_shop_discount(struct npc_data* nd);
 void npc_market_tosql(const char *exname, struct npc_item_list *list);
 void npc_market_delfromsql_(const char *exname, t_itemid nameid, bool clear);
 #endif
+
+// Barter
+int npc_barter_buylist(struct map_session_data *sd, uint16 n, struct barteritemlist *item_list);
+int npc_expanded_barter_buylist(struct map_session_data *sd, uint16 n, struct barteritemlist *item_list);
 
 #ifdef SECURE_NPCTIMEOUT
 	TIMER_FUNC(npc_secure_timeout_timer);

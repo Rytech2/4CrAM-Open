@@ -17426,7 +17426,7 @@ BUILDIN_FUNC(callshop)
 	if (script_hasdata(st,3))
 		flag = script_getnum(st,3);
 	nd = npc_name2id(shopname);
-	if( !nd || nd->bl.type != BL_NPC || (nd->subtype != NPCTYPE_SHOP && nd->subtype != NPCTYPE_CASHSHOP && nd->subtype != NPCTYPE_ITEMSHOP && nd->subtype != NPCTYPE_POINTSHOP && nd->subtype != NPCTYPE_MARKETSHOP) ) {
+	if( !nd || nd->bl.type != BL_NPC || (nd->subtype != NPCTYPE_SHOP && nd->subtype != NPCTYPE_EXPANDED_BARTER && nd->subtype != NPCTYPE_CASHSHOP && nd->subtype != NPCTYPE_BARTER && nd->subtype != NPCTYPE_ITEMSHOP && nd->subtype != NPCTYPE_POINTSHOP && nd->subtype != NPCTYPE_MARKETSHOP) ) {
 		ShowError("buildin_callshop: Shop [%s] not found (or NPC is not shop type)\n", shopname);
 		script_pushint(st,0);
 		return SCRIPT_CMD_FAILURE;
@@ -17462,6 +17462,42 @@ BUILDIN_FUNC(callshop)
 		return SCRIPT_CMD_SUCCESS;
 	}
 #endif
+	else if (nd->subtype == NPCTYPE_BARTER) {
+		unsigned short i;
+		
+		for (i = 0; i < nd->u.shop.count; i++) {
+			if (nd->u.shop.shop_item[i].qty)
+				break;
+		}
+		
+		if (i == nd->u.shop.count) {
+			clif_messagecolor(&sd->bl, color_table[COLOR_RED], msg_txt(sd, 534), false, SELF);
+			return SCRIPT_CMD_FAILURE;
+		}
+
+		sd->npc_shopid = nd->bl.id;
+		clif_npc_barter_open(sd, nd);
+		script_pushint(st,1);
+		return SCRIPT_CMD_SUCCESS;
+	}
+	else if (nd->subtype == NPCTYPE_EXPANDED_BARTER) {
+		unsigned short i;
+		
+		for (i = 0; i < nd->u.shop.count; i++) {
+			if (nd->u.shop.shop_item[i].qty)
+				break;
+		}
+		
+		if (i == nd->u.shop.count) {
+			clif_messagecolor(&sd->bl, color_table[COLOR_RED], msg_txt(sd, 534), false, SELF);
+			return SCRIPT_CMD_FAILURE;
+		}
+
+		sd->npc_shopid = nd->bl.id;
+		clif_npc_expanded_barter_open(sd, nd);
+		script_pushint(st,1);
+		return SCRIPT_CMD_SUCCESS;
+	}
 	else
 		clif_cashshop_show(sd, nd);
 
@@ -17478,7 +17514,8 @@ BUILDIN_FUNC(npcshopitem)
 	int amount;
 	uint16 offs = 2;
 
-	if( !nd || ( nd->subtype != NPCTYPE_SHOP && nd->subtype != NPCTYPE_CASHSHOP && nd->subtype != NPCTYPE_ITEMSHOP && nd->subtype != NPCTYPE_POINTSHOP && nd->subtype != NPCTYPE_MARKETSHOP ) ) { // Not found.
+	if( !nd || ( nd->subtype != NPCTYPE_SHOP && nd->subtype != NPCTYPE_CASHSHOP && nd->subtype != NPCTYPE_ITEMSHOP 
+	&& nd->subtype != NPCTYPE_BARTER && nd->subtype != NPCTYPE_EXPANDED_BARTER && nd->subtype != NPCTYPE_POINTSHOP && nd->subtype != NPCTYPE_MARKETSHOP ) ) { // Not found.
 		script_pushint(st,0);
 		return SCRIPT_CMD_SUCCESS;
 	}
@@ -17527,13 +17564,20 @@ BUILDIN_FUNC(npcshopadditem)
 	struct npc_data* nd = npc_name2id(npcname);
 	uint16 offs = 2, amount;
 
-	if (!nd || ( nd->subtype != NPCTYPE_SHOP && nd->subtype != NPCTYPE_CASHSHOP && nd->subtype != NPCTYPE_ITEMSHOP && nd->subtype != NPCTYPE_POINTSHOP && nd->subtype != NPCTYPE_MARKETSHOP)) { // Not found.
+	if (!nd || ( nd->subtype != NPCTYPE_SHOP && nd->subtype != NPCTYPE_CASHSHOP && nd->subtype != NPCTYPE_BARTER 
+	&& nd->subtype != NPCTYPE_ITEMSHOP && nd->subtype != NPCTYPE_POINTSHOP && nd->subtype != NPCTYPE_MARKETSHOP && nd->subtype != NPCTYPE_EXPANDED_BARTER)) { // Not found.
 		script_pushint(st,0);
 		return SCRIPT_CMD_SUCCESS;
 	}
 
 	if (nd->subtype == NPCTYPE_MARKETSHOP)
 		offs = 3;
+	
+	if (nd->subtype == NPCTYPE_BARTER)
+		offs = 4;
+	
+	if (nd->subtype == NPCTYPE_EXPANDED_BARTER)
+		offs = 18;
 
 	// get the count of new entries
 	amount = (script_lastdata(st)-2)/offs;
@@ -17569,6 +17613,63 @@ BUILDIN_FUNC(npcshopadditem)
 		return SCRIPT_CMD_SUCCESS;
 	}
 #endif
+	
+	if (nd->subtype == NPCTYPE_BARTER) {
+		for (int n = 0, i = 3; n < amount; n++, i += offs) {
+			uint32 nameid = script_getnum(st,i), j;
+
+			// Check existing entries
+			//ARR_FIND(0, nd->u.shop.count, j, nd->u.shop.shop_item[j].nameid == nameid);  --> It will allow Duplicate item with other requirement.
+			j = nd->u.shop.count;
+			if (j == nd->u.shop.count) {
+				RECREATE(nd->u.shop.shop_item, struct npc_item_list, nd->u.shop.count+1);
+				j = nd->u.shop.count;
+				nd->u.shop.shop_item[j].flag = 1;
+				nd->u.shop.count++;
+			}
+
+			nd->u.shop.shop_item[j].nameid = nameid;
+			nd->u.shop.shop_item[j].value = script_getnum(st,i+1);
+			nd->u.shop.shop_item[j].value2 = script_getnum(st,i+2);
+			nd->u.shop.shop_item[j].qty = script_getnum(st,i+3);
+
+		}
+		script_pushint(st,1);
+		return SCRIPT_CMD_SUCCESS;
+	}
+	
+	if (nd->subtype == NPCTYPE_EXPANDED_BARTER) {
+		for (int n = 0, i = 3, m = 0, value2 = 0; n < amount; n++, i += offs) {
+			uint32 nameid = script_getnum(st,i), j;
+
+			// Check existing entries
+			//ARR_FIND(0, nd->u.shop.count, j, nd->u.shop.shop_item[j].nameid == nameid);  --> It will allow Duplicate item with other requirement.
+			j = nd->u.shop.count;
+			if (j == nd->u.shop.count) {
+				RECREATE(nd->u.shop.shop_item, struct npc_item_list, nd->u.shop.count+1);
+				j = nd->u.shop.count;
+				nd->u.shop.shop_item[j].flag = 1;
+				nd->u.shop.count++;
+			}
+			
+			nd->u.shop.shop_item[j].nameid = nameid;
+			nd->u.shop.shop_item[j].qty = script_getnum(st,i+1);
+			nd->u.shop.shop_item[j].value = script_getnum(st,i+2);
+			for (uint8 k = 0; k < 5; k++) {
+				nd->u.shop.shop_item[j].currency.nameid[k] = script_getnum(st, i + 3 + m);
+				nd->u.shop.shop_item[j].currency.amount[k] = script_getnum(st, i + 4 + m);
+				nd->u.shop.shop_item[j].currency.refine[k] = script_getnum(st, i + 5 + m);
+				m += 3;
+				if (nd->u.shop.shop_item[j].currency.nameid[k])
+					value2++;
+			}
+
+			nd->u.shop.shop_item[j].value2 = value2;
+			value2 = 0;
+		}
+		script_pushint(st,1);
+		return SCRIPT_CMD_SUCCESS;
+	}
 
 	// append new items to existing shop item list
 	RECREATE(nd->u.shop.shop_item, struct npc_item_list, nd->u.shop.count+amount);
@@ -17598,7 +17699,8 @@ BUILDIN_FUNC(npcshopdelitem)
 	int n, i, size;
 	unsigned short amount;
 
-	if (!nd || ( nd->subtype != NPCTYPE_SHOP && nd->subtype != NPCTYPE_CASHSHOP && nd->subtype != NPCTYPE_ITEMSHOP && nd->subtype != NPCTYPE_POINTSHOP && nd->subtype != NPCTYPE_MARKETSHOP)) { // Not found.
+	if (!nd || ( nd->subtype != NPCTYPE_SHOP && nd->subtype != NPCTYPE_CASHSHOP && nd->subtype != NPCTYPE_BARTER && nd->subtype != NPCTYPE_ITEMSHOP 
+	&& nd->subtype != NPCTYPE_POINTSHOP && nd->subtype != NPCTYPE_MARKETSHOP && nd->subtype != NPCTYPE_EXPANDED_BARTER)) { // Not found.
 		script_pushint(st,0);
 		return SCRIPT_CMD_SUCCESS;
 	}
@@ -17642,7 +17744,8 @@ BUILDIN_FUNC(npcshopattach)
 	if( script_hasdata(st,3) )
 		flag = script_getnum(st,3);
 
-	if (!nd || ( nd->subtype != NPCTYPE_SHOP && nd->subtype != NPCTYPE_CASHSHOP && nd->subtype != NPCTYPE_ITEMSHOP && nd->subtype != NPCTYPE_POINTSHOP && nd->subtype != NPCTYPE_MARKETSHOP)) { // Not found.
+	if (!nd || ( nd->subtype != NPCTYPE_SHOP && nd->subtype != NPCTYPE_CASHSHOP && nd->subtype != NPCTYPE_ITEMSHOP && nd->subtype != NPCTYPE_BARTER 
+	&& nd->subtype != NPCTYPE_POINTSHOP && nd->subtype != NPCTYPE_MARKETSHOP && nd->subtype != NPCTYPE_EXPANDED_BARTER)) { // Not found.
 		script_pushint(st,0);
 		return SCRIPT_CMD_SUCCESS;
 	}
@@ -23209,7 +23312,8 @@ BUILDIN_FUNC(npcshopupdate) {
 #endif
 	int i;
 
-	if( !nd || ( nd->subtype != NPCTYPE_SHOP && nd->subtype != NPCTYPE_CASHSHOP && nd->subtype != NPCTYPE_ITEMSHOP && nd->subtype != NPCTYPE_POINTSHOP && nd->subtype != NPCTYPE_MARKETSHOP ) ) { // Not found.
+	if( !nd || ( nd->subtype != NPCTYPE_SHOP && nd->subtype != NPCTYPE_CASHSHOP && nd->subtype != NPCTYPE_ITEMSHOP && nd->subtype != NPCTYPE_BARTER 
+	&& nd->subtype != NPCTYPE_POINTSHOP && nd->subtype != NPCTYPE_MARKETSHOP && nd->subtype != NPCTYPE_EXPANDED_BARTER) ) { // Not found.
 		script_pushint(st,0);
 		return SCRIPT_CMD_FAILURE;
 	}

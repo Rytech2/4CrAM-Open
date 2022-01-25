@@ -69,6 +69,24 @@ static void npc_market_fromsql(void);
 #define npc_market_clearfromsql(exname) (npc_market_delfromsql_((exname), 0, true))
 #endif
 
+// Barter Shop
+struct s_npc_barter {
+	struct npc_item_list *list;
+	char exname[NPC_NAME_LENGTH + 1];
+	uint16 count;
+};
+
+static unsigned int npc_barter_qty[MAX_INVENTORY];
+
+// Extended Barter Shop
+struct s_npc_ex_barter {
+	struct npc_item_list *list;
+	char exname[NPC_NAME_LENGTH + 1];
+	uint16 count;
+};
+
+static unsigned int npc_ex_barter_qty[MAX_INVENTORY];
+
 /// Returns a new npc id that isn't being used in id_db.
 /// Fatal error if nothing is available.
 int npc_get_new_npc_id(void) {
@@ -1464,6 +1482,42 @@ int npc_click(struct map_session_data* sd, struct npc_data* nd)
 			}
 #endif
 			break;
+		case NPCTYPE_BARTER:
+			{
+				unsigned short i;
+
+				for (i = 0; i < nd->u.shop.count; i++) {
+					if (nd->u.shop.shop_item[i].qty)
+						break;
+				}
+
+				if (i == nd->u.shop.count) {
+					clif_messagecolor(&sd->bl, color_table[COLOR_RED], msg_txt(sd, 534), false, SELF);
+					return false;
+				}
+
+				sd->npc_shopid = nd->bl.id;
+				clif_npc_barter_open(sd, nd);
+			}
+			break;
+		case NPCTYPE_EXPANDED_BARTER:
+			{
+				unsigned short i;
+
+				for (i = 0; i < nd->u.shop.count; i++) {
+					if (nd->u.shop.shop_item[i].qty)
+						break;
+				}
+
+				if (i == nd->u.shop.count) {
+					clif_messagecolor(&sd->bl, color_table[COLOR_RED], msg_txt(sd, 534), false, SELF);
+					return false;
+				}
+
+				sd->npc_shopid = nd->bl.id;
+				clif_npc_expanded_barter_open(sd, nd);
+			}
+			break;
 		case NPCTYPE_SCRIPT:
 			run_script(nd->u.scr.script,0,sd->bl.id,nd->bl.id);
 			break;
@@ -1695,7 +1749,8 @@ int npc_cashshop_buylist(struct map_session_data *sd, int points, int count, str
 	enum e_CASHSHOP_ACK res;
 	item_data *id;
 
-	if( !nd || ( nd->subtype != NPCTYPE_CASHSHOP && nd->subtype != NPCTYPE_ITEMSHOP && nd->subtype != NPCTYPE_POINTSHOP ) )
+	if( !nd || ( nd->subtype != NPCTYPE_CASHSHOP && nd->subtype != NPCTYPE_ITEMSHOP && nd->subtype != NPCTYPE_POINTSHOP && nd->subtype != NPCTYPE_BARTER 
+		&& nd->subtype != NPCTYPE_EXPANDED_BARTER ) )
 		return ERROR_TYPE_NPC;
 	if( sd->state.trading )
 		return ERROR_TYPE_EXCHANGE;
@@ -1861,7 +1916,8 @@ int npc_cashshop_buy(struct map_session_data *sd, t_itemid nameid, int amount, i
 	if( points < 0 )
 		return ERROR_TYPE_MONEY;
 
-	if( !nd || (nd->subtype != NPCTYPE_CASHSHOP && nd->subtype != NPCTYPE_ITEMSHOP && nd->subtype != NPCTYPE_POINTSHOP) )
+	if( !nd || (nd->subtype != NPCTYPE_CASHSHOP && nd->subtype != NPCTYPE_ITEMSHOP && nd->subtype != NPCTYPE_POINTSHOP 
+		&& nd->subtype != NPCTYPE_BARTER && nd->subtype != NPCTYPE_EXPANDED_BARTER) )
 		return ERROR_TYPE_NPC;
 
 	if( sd->state.trading )
@@ -2420,7 +2476,9 @@ int npc_unload(struct npc_data* nd, bool single) {
 	if( single && nd->bl.m != -1 )
 		map_remove_questinfo(nd->bl.m, nd);
 
-	if( (nd->subtype == NPCTYPE_SHOP || nd->subtype == NPCTYPE_CASHSHOP || nd->subtype == NPCTYPE_ITEMSHOP || nd->subtype == NPCTYPE_POINTSHOP || nd->subtype == NPCTYPE_MARKETSHOP) && nd->src_id == 0) //src check for duplicate shops [Orcao]
+	if( (nd->subtype == NPCTYPE_SHOP || nd->subtype == NPCTYPE_CASHSHOP || nd->subtype == NPCTYPE_BARTER || 
+		nd->subtype == NPCTYPE_ITEMSHOP || nd->subtype == NPCTYPE_POINTSHOP 
+		|| nd->subtype == NPCTYPE_MARKETSHOP || nd->subtype == NPCTYPE_EXPANDED_BARTER) && nd->src_id == 0) //src check for duplicate shops [Orcao]
 		aFree(nd->u.shop.shop_item);
 	else if( nd->subtype == NPCTYPE_SCRIPT ) {
 		struct s_mapiterator* iter;
@@ -2922,6 +2980,10 @@ static const char* npc_parse_shop(char* w1, char* w2, char* w3, char* w4, const 
 		type = NPCTYPE_POINTSHOP;
 	else if( !strcasecmp(w2, "marketshop") )
 		type = NPCTYPE_MARKETSHOP;
+	else if( !strcasecmp(w2, "bartershop") )
+		type = NPCTYPE_BARTER;
+	else if( !strcasecmp(w2, "exbartershop") )
+		type = NPCTYPE_EXPANDED_BARTER;
 	else
 		type = NPCTYPE_SHOP;
 
@@ -2969,6 +3031,10 @@ static const char* npc_parse_shop(char* w1, char* w2, char* w3, char* w4, const 
 			is_discount = 0;
 			break;
 #endif
+		case NPCTYPE_BARTER:
+		case NPCTYPE_EXPANDED_BARTER:
+			is_discount = 0;
+			break;
 		default:
 			if( sscanf( p, ",%32[^,:]:%11d,", point_str, &is_discount ) == 2 ){
 				is_discount = 1;
@@ -3006,6 +3072,11 @@ static const char* npc_parse_shop(char* w1, char* w2, char* w3, char* w4, const 
 					skip = true;
 				}
 #endif
+				break;
+			case NPCTYPE_BARTER:
+			case NPCTYPE_EXPANDED_BARTER:
+				skip = true;
+				qty = 0;
 				break;
 			default:
 				if (sscanf(p, ",%u:%11d", &nameid2, &value) != 2) {
@@ -3070,7 +3141,7 @@ static const char* npc_parse_shop(char* w1, char* w2, char* w3, char* w4, const 
 		nd->u.shop.count++;
 		p = strchr(p+1,',');
 	}
-	if( nd->u.shop.count == 0 ) {
+	if( nd->u.shop.count == 0 && !(type == NPCTYPE_BARTER || type == NPCTYPE_EXPANDED_BARTER)) {
 		ShowWarning("npc_parse_shop: Ignoring empty shop in file '%s', line '%d'.\n", filepath, strline(buffer,start-buffer));
 		aFree(nd);
 		return strchr(start,'\n');// continue
@@ -3413,7 +3484,9 @@ const char* npc_parse_duplicate(char* w1, char* w2, char* w3, char* w4, const ch
 	type = dnd->subtype;
 
 	// get placement
-	if ((type == NPCTYPE_SHOP || type == NPCTYPE_CASHSHOP || type == NPCTYPE_ITEMSHOP || type == NPCTYPE_POINTSHOP || type == NPCTYPE_SCRIPT || type == NPCTYPE_MARKETSHOP) && strcmp(w1, "-") == 0) {// floating shop/chashshop/itemshop/pointshop/script
+	if ((type == NPCTYPE_SHOP || type == NPCTYPE_CASHSHOP || type == NPCTYPE_ITEMSHOP || type == NPCTYPE_BARTER 
+	|| type == NPCTYPE_POINTSHOP || type == NPCTYPE_SCRIPT 
+	|| type == NPCTYPE_MARKETSHOP || type == NPCTYPE_EXPANDED_BARTER) && strcmp(w1, "-") == 0) {// floating shop/chashshop/itemshop/pointshop/script
 		x = y = dir = 0;
 		m = -1;
 	} else {
@@ -3461,6 +3534,8 @@ const char* npc_parse_duplicate(char* w1, char* w2, char* w3, char* w4, const ch
 		case NPCTYPE_ITEMSHOP:
 		case NPCTYPE_POINTSHOP:
 		case NPCTYPE_MARKETSHOP:
+		case NPCTYPE_BARTER:
+		case NPCTYPE_EXPANDED_BARTER:
 			++npc_shop;
 			safestrncpy( nd->u.shop.pointshop_str, dnd->u.shop.pointshop_str, strlen( dnd->u.shop.pointshop_str ) );
 			nd->u.shop.itemshop_nameid = dnd->u.shop.itemshop_nameid;
@@ -4582,7 +4657,7 @@ int npc_parsesrcfile(const char* filepath)
 
 		if((strcasecmp(w2,"warp") == 0 || strcasecmp(w2,"warp2") == 0) && count > 3)
 			p = npc_parse_warp(w1,w2,w3,w4, p, buffer, filepath);
-		else if( (!strcasecmp(w2,"shop") || !strcasecmp(w2,"cashshop") || !strcasecmp(w2,"itemshop") || !strcasecmp(w2,"pointshop") || !strcasecmp(w2,"marketshop") ) && count > 3 )
+		else if( (!strcasecmp(w2,"shop") || !strcasecmp(w2,"cashshop") || !strcasecmp(w2,"bartershop") || !strcasecmp(w2,"exbartershop") || !strcasecmp(w2,"itemshop") || !strcasecmp(w2,"pointshop") || !strcasecmp(w2,"marketshop") ) && count > 3 )
 			p = npc_parse_shop(w1,w2,w3,w4, p, buffer, filepath);
 		else if( strcasecmp(w2,"script") == 0 && count > 3 ) {
 			if( strcasecmp(w1,"function") == 0 )
@@ -4605,6 +4680,336 @@ int npc_parsesrcfile(const char* filepath)
 
 	return 1;
 }
+
+int npc_barter_buylist(struct map_session_data* sd, uint16 n, struct barteritemlist *item_list) {
+	struct npc_data* nd;
+	struct npc_item_list *shop = NULL;
+	double z;
+	int i,j,w,new_;
+	unsigned short shop_size = 0;
+
+	nullpo_retr(1, sd);
+	nullpo_retr(1, item_list);
+
+	nd = npc_checknear(sd,map_id2bl(sd->npc_shopid));
+	if( nd == NULL )
+		return 3;
+	if( nd->subtype != NPCTYPE_BARTER )
+		return 3;
+	if (!item_list || !n)
+		return 3;
+
+	z = 0;
+	w = 0;
+	new_ = 0;
+
+	shop = nd->u.shop.shop_item;
+	shop_size = nd->u.shop.count;
+
+	int items[MAX_INVENTORY] = { 0 };
+	// process entries in buy list, one by one
+	for( i = 0; i < n; i++ ) {
+		unsigned short amount;
+		int nameid;
+		int removeAmount;
+		int value;
+		item_data *id;
+		
+		int index = item_list[i].removeIndex;
+		if (index < 0 || index >= MAX_INVENTORY)
+			return 11;  // wrong inventory index
+
+		int removeId = sd->inventory.u.items_inventory[index].nameid;
+		j = item_list[i].shopIndex;
+		if (j < 0 || j >= shop_size)
+			return 13;  // no such item in shop
+		if (item_list[i].addId != shop[j].nameid && item_list[i].addId != itemdb_viewid(shop[j].nameid))
+			return 13;  // no such item in shop
+		if (removeId != shop[j].value && removeId != itemdb_viewid(shop[j].value))
+			return 13;  // no such item in shop
+		item_list[i].addId = shop[j].nameid;  // item_avail replacement
+		removeId = shop[j].value;  // item_avail replacement
+		
+		if (!itemdb_exists(item_list[i].addId))
+			return 13; // item no longer in itemdb
+
+		removeAmount = shop[j].value2;
+		
+		if (shop[j].qty != -1 && item_list[i].addAmount > shop[j].qty && shop[j].qflag == 0)
+			return 14;  // not enough item amount in shop
+		
+		if (removeAmount * item_list[i].addAmount > sd->inventory.u.items_inventory[index].amount)
+			return 14;  // not enough item amount in inventory
+		
+		items[index] += removeAmount * item_list[i].addAmount;
+		
+		if (items[index] > sd->inventory.u.items_inventory[index].amount)
+			return 14;  // not enough item amount in inventory
+
+		amount = item_list[i].addAmount;
+		nameid = item_list[i].addId = shop[j].nameid; //item_avail replacement
+		value = shop[j].value;
+		id = itemdb_exists(nameid);
+
+		if( !id )
+			return 3; // item no longer in itemdb
+		
+		npc_barter_qty[i] = j;
+
+		if( !itemdb_isstackable2(id) && amount > 1 ) { //Exploit? You can't buy more than 1 of equipment types o.O
+			//ShowWarning("Player %s (%d:%d) sent a hexed packet trying to buy %d of nonstackable item %d!\n",
+				//sd->status.name, sd->status.account_id, sd->status.char_id, amount, nameid);
+			//amount = item_list[i].addAmount = 1;
+			return 11;
+		}
+
+		if( nd->master_nd ) { // Script-controlled shops decide by themselves, what can be bought and for what price.
+			continue;
+		}
+
+		switch( pc_checkadditem(sd,nameid,amount) ) {
+			case CHKADDITEM_EXIST:
+				break;
+
+			case CHKADDITEM_NEW:
+				new_ += id->inventorySlotNeeded(amount);
+				break;
+
+			case CHKADDITEM_OVERAMOUNT:
+				return 2;
+		}
+
+		if (npc_shop_discount(nd))
+			value = pc_modifybuyvalue(sd,value);
+
+		//z += (double)value * amount;
+		w += itemdb_weight(nameid) * amount;
+		w -= itemdb_weight(removeId) * removeAmount;
+	}
+
+	if( w + sd->weight > sd->max_weight )
+		return 2;	// Too heavy
+	if( pc_inventoryblank(sd) < new_ )
+		return 3;	// Not enough space to store items
+	
+	for (i = 0; i < MAX_INVENTORY; i++) {
+		int removeAmountTotal = items[i];
+		if (removeAmountTotal == 0)
+			continue;
+		if (pc_delitem(sd, i, removeAmountTotal, 0, 6, LOG_TYPE_NPC) != 0) {
+			return 11;  // unknown exploit
+		}
+	}
+
+	memset(npc_barter_qty, 0, sizeof(npc_barter_qty));
+
+	for( i = 0; i < n; i++ ) {
+		int nameid = item_list[i].addId;
+		unsigned short amount = item_list[i].addAmount;
+		int shopIdx = npc_barter_qty[i];
+
+		if (shop[shopIdx].qty != -1) {
+			if (item_list[i].addAmount > shop[shopIdx].qty && shop[shopIdx].qflag == 0) /* wohoo someone tampered with the packet. */
+				return 14;
+			shop[shopIdx].qty -= item_list[i].addAmount;
+		}
+
+		if (itemdb_type(nameid) == IT_PETEGG)
+			pet_create_egg(sd, nameid);
+		else {
+			unsigned short get_amt = amount;
+
+			if ((itemdb_search(nameid))->flag.guid)
+				get_amt = 1;
+
+			int k;
+
+			for (k = 0; k < amount; k += get_amt) {
+				struct item item_tmp;
+				memset(&item_tmp, 0, sizeof(item_tmp));
+				item_tmp.nameid = nameid;
+				item_tmp.identify = 1;
+
+				pc_additem(sd,&item_tmp,get_amt,LOG_TYPE_NPC);
+			}
+		}
+	}
+
+	return 12;
+}
+
+int npc_expanded_barter_buylist(struct map_session_data* sd, uint16 n, struct barteritemlist *item_list) {
+	struct npc_data* nd;
+	struct npc_item_list *shop = NULL;
+	double z;
+	int i,j,w,new_;
+	unsigned short shop_size = 0;
+
+	nullpo_retr(1, sd);
+	nullpo_retr(1, item_list);
+
+	nd = npc_checknear(sd,map_id2bl(sd->npc_shopid));
+	if( nd == NULL )
+		return 11;
+	if( nd->subtype != NPCTYPE_EXPANDED_BARTER )
+		return 11;
+	if (!item_list || !n)
+		return 11;
+
+	z = 0;
+	w = 0;
+	new_ = 0;
+
+	shop = nd->u.shop.shop_item;
+	shop_size = nd->u.shop.count;
+
+	int items[MAX_INVENTORY] = { 0 };
+	// process entries in buy list, one by one
+	for( i = 0; i < n; i++ ) {
+		//unsigned short amount;
+		int nameid;
+		//int value;
+		item_data *id;
+		
+		if (item_list[i].addAmount <= 0)
+			return 14;
+
+		j = item_list[i].shopIndex;
+		if (j < 0 || j >= shop_size)
+			return 13;  // no such item in shop
+		if (item_list[i].addId != shop[j].nameid && item_list[i].addId != itemdb_viewid(shop[j].nameid))
+			return 13;  // no such item in shop
+		nameid = item_list[i].addId = shop[j].nameid;  // item_avail replacement
+		
+		if (!itemdb_exists(item_list[i].addId))
+			return 13; // item no longer in itemdb
+		
+		if (shop[j].qty != -1 && item_list[i].addAmount > shop[j].qty && shop[j].qflag == 0)
+			return 14;  // not enough item amount in shop
+
+		int currencyCount = shop[j].value2;
+
+		for (int currencyIndex = 0; currencyIndex < currencyCount; currencyIndex++) {
+			const int currencyItemId = shop[j].currency.nameid[currencyIndex];
+			const int currencyRefine = shop[j].currency.refine[currencyIndex];
+			int removeAmount = shop[j].currency.amount[currencyIndex] * item_list[i].addAmount;
+			if (removeAmount <= 0)
+				continue;
+			
+			for (int n = 0; n < MAX_INVENTORY && removeAmount > 0; n++) {
+				// check item id and existing amount
+				if (sd->inventory.u.items_inventory[n].nameid == currencyItemId && sd->inventory.u.items_inventory[n].amount > 0) {
+					// check item refine level
+					if (currencyRefine != -1 && sd->inventory.u.items_inventory[n].refine < currencyRefine)
+						continue;
+					if (sd->inventory.u.items_inventory[n].amount >= removeAmount) {
+						items[n] += removeAmount;
+						removeAmount = 0;
+						w -= itemdb_weight(currencyItemId) * removeAmount;
+						break;
+					} else {
+						items[n] += sd->inventory.u.items_inventory[n].amount;
+						removeAmount -= sd->inventory.u.items_inventory[n].amount;
+						w -= itemdb_weight(currencyItemId) * sd->inventory.u.items_inventory[n].amount;
+					}
+				}
+				if (items[n] > sd->inventory.u.items_inventory[n].amount)
+					return 14;  // not enough item amount in inventory
+			}
+			if (removeAmount != 0) {
+				return 14;  // not enough item amount in inventory
+			}
+		}
+		
+		item_list[i].addId = shop[j].nameid; //item_avail replacement
+		
+		id = itemdb_exists(nameid);
+
+		if( !id )
+			return 3; // item no longer in itemdb
+
+		npc_ex_barter_qty[i] = j;
+
+		if (!itemdb_isstackable2(id) && item_list[i].addAmount > 1) {
+			return 11;
+			//Exploit? You can't buy more than 1 of equipment types o.O
+			ShowWarning("Player %s (%d:%d) sent a hexed packet trying to buy %d of non-stackable item %d!\n",
+						sd->status.name, sd->status.account_id, sd->status.char_id, item_list[i].addAmount, item_list[i].addId);
+			item_list[i].addAmount = 1;
+		}
+		
+		switch (pc_checkadditem(sd, item_list[i].addId, item_list[i].addAmount)) {
+			case CHKADDITEM_EXIST:
+				break;
+			case CHKADDITEM_NEW:
+				new_++;
+				break;
+			case CHKADDITEM_OVERAMOUNT: /* TODO find official response for this */
+				return 1;
+		}
+
+		z += (double)shop[j].value * item_list[i].addAmount;
+		w += itemdb_weight(item_list[i].addId) * item_list[i].addAmount;
+	
+	}
+	
+		if (z > (double)sd->status.zeny)
+			return 1;	// Not enough Zeny
+		
+		if( w + sd->weight > sd->max_weight )
+			return 2;	// Too heavy
+		
+		if( pc_inventoryblank(sd) < new_ )
+			return 3;	// Not enough space to store items
+		
+		for (int i = 0; i < MAX_INVENTORY; i++) {
+			int removeAmountTotal = items[i];
+			if (removeAmountTotal == 0)
+				continue;
+			if (pc_delitem(sd, i, removeAmountTotal, 0, 6, LOG_TYPE_NPC) != 0) {
+				return 11;  // unknown exploit
+			}
+		}
+		
+		pc_payzeny(sd, (int)z, LOG_TYPE_NPC, NULL);
+
+	memset(npc_ex_barter_qty, 0, sizeof(npc_ex_barter_qty));
+
+	for( i = 0; i < n; ++i ) {
+		int nameid = item_list[i].addId;
+		unsigned short amount = item_list[i].addAmount;
+		int shopIdx = npc_ex_barter_qty[i];
+
+		if (shop[shopIdx].qty != -1) {
+			if (item_list[i].addAmount > shop[shopIdx].qty && shop[shopIdx].qflag == 0) /* wohoo someone tampered with the packet. */
+				return 14;
+			shop[shopIdx].qty -= item_list[i].addAmount;
+		}
+
+		if (itemdb_type(nameid) == IT_PETEGG)
+			pet_create_egg(sd, nameid);
+		else {
+			unsigned short get_amt = amount;
+
+			if ((itemdb_search(nameid))->flag.guid)
+				get_amt = 1;
+
+			int k;
+
+			for (k = 0; k < amount; k += get_amt) {
+				struct item item_tmp;
+				memset(&item_tmp, 0, sizeof(item_tmp));
+				item_tmp.nameid = nameid;
+				item_tmp.identify = 1;
+
+				pc_additem(sd,&item_tmp,get_amt,LOG_TYPE_NPC);
+			}
+		}
+	}
+
+	return 12;
+}
+
 
 int npc_script_event(struct map_session_data* sd, enum npce_event type){
 	if (type == NPCE_MAX)

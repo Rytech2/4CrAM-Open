@@ -2431,6 +2431,18 @@
 	parseable_packet( HEADER_CZ_SE_CASHSHOP_OPEN2, sizeof( struct PACKET_CZ_SE_CASHSHOP_OPEN2 ), clif_parse_cashshop_open_request, 0 );
 #endif
 
+// Bartershop
+// 2018-12-12 Ragexe
+#if PACKETVER >= 20181212
+	parseable_packet( 0x0B0F, -1, clif_parse_NPCBarterPurchase, 0 );
+	parseable_packet( 0x0B12, sizeof( struct PACKET_CZ_NPC_BARTER_CLOSE ), clif_parse_NPCBarterClosed, 0 );
+#endif
+
+#if PACKETVER >= 20190904
+	parseable_packet( 0x0b57, -1, clif_parse_npc_expanded_barter_purchase, 0 );
+	parseable_packet( 0x0b58, sizeof( struct PACKET_CZ_NPC_EXPANDED_BARTER_CLOSE ), clif_parse_npc_expanded_barter_closed, 0 );
+#endif
+
 #if PACKETVER >= 20200724
 	parseable_packet(0x00b24, 6, clif_parse_TraitStatusUp, 2, 4);
 #endif
