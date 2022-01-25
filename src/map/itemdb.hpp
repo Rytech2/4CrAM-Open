@@ -8,6 +8,8 @@
 #include <vector>
 
 #include "../common/database.hpp"
+#include <string>
+
 #include "../common/db.hpp"
 #include "../common/malloc.hpp"
 #include "../common/mmo.hpp" // ITEM_NAME_LENGTH
@@ -1138,6 +1140,19 @@ s_item_combo *itemdb_combo_exists(uint32 combo_id);
 bool itemdb_parse_roulette_db(void);
 
 void itemdb_reload(void);
+
+std::string base62_encode(unsigned int val);
+unsigned int base62_decode(std::string str);
+// Additional data for itemlink
+struct s_item_link {
+	struct item item;
+	struct {
+		uint8 cards;
+		uint8 options;
+	} flag;
+};
+std::string createItemLink(struct s_item_link *data);
+std::string itemdb_getItemLink(struct item *item);
 
 void do_final_itemdb(void);
 void do_init_itemdb(void);
